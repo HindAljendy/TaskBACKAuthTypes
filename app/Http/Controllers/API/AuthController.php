@@ -3,53 +3,43 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\StoreUser;
-use App\Http\Resources\UserResource;
-use App\Http\Traits\ApiResponseTrait;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 
 class AuthController extends Controller
 {
-    use ApiResponseTrait;
-    public function register(StoreUser $request){
-
-        $user = $request->validated();
-
-        $user = User::create([
-            'name' => $user['name'],
-            'email' => $user['email'],
-            'password' => Hash::make($user['password']),
+    public function register(Request $request)
+    {
+        $data = $request->validate([
+            'name' => 'required|max:255',
+            'email' => 'required|email|unique:users',
+            'password' => 'required|min:8'
         ]);
 
-        $token = $user->createToken('authToken')->plainTextToken;
+        $data['password'] = bcrypt($request->password);
 
-        return $this->apiResponse(new UserResource($user), $token, 'registered successfully', 200);
+        $user = User::create($data);
+
+        $token = $user->createToken('API Token')->accessToken;
+
+        return response([ 'user' => $user, 'token' => $token]);
     }
 
-    public function login(Request $request){
+    public function login(Request $request)
+    {
+        $data = $request->validate([
+            'email' => 'email|required',
+            'password' => 'required'
+        ]);
 
-        if (!Auth::attempt($request->only('email', 'password'))) {
-            return response()->json([
-                'message' => 'Invalid login details'
-            ], 401);
+        if (!auth()->attempt($data)) {
+            return response(['error_message' => 'Incorrect Details.
+            Please try again']);
         }
 
-        $user = User::where('email', $request['email'])->firstOrFail();
+        $token = auth()->user()->createToken('API Token')->accessToken;
 
-        $token = $user->createToken('authToken')->plainTextToken;
+        return response(['user' => auth()->user(), 'token' => $token]);
 
-        return $this->apiResponse(new UserResource($user), $token, 'successfully login,welcome!', 200);
-    }
-
-    public function logout(Request $request)
-    {
-        $request->user()->tokens()->delete();
-
-        return response()->json([
-            'message' => 'Successfully logged out'
-        ]);
     }
 }
